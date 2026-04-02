@@ -125,3 +125,11 @@ The elevator control system consists of *10 components*. The elevator operates o
 + Lift carriage location (which floor it is in): Array of bools[4], in which each bool corresponds if carriage is at that floor or not
 
 + Door closed/opened at each floor: Array of bools[4] in which each bool corresponds to whether or not door at that floor is open or not
+
+
+		
+queue[queueSize].floorNumber = fCallMsg.floor_called_from;
+queue[queueSize].direction = fCallMsg.direction;
+queue[queueSize].isElevatorCall = false;
+queueSize++;
+			

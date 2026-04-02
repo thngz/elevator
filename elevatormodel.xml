@@ -20,6 +20,11 @@ typedef struct {
 } FloorCallMessage;
 
 
+typedef struct {
+    int selected_floor;
+} ElevatorCallMessage;
+
+
 int current_floor;
 bool overloaded;
 bool motion_detected;
@@ -30,57 +35,116 @@ bool floorButtons[num_floors] = {true, false, false, false}; // if elevator at t
 
 
 FloorCallMessage fCallMsg;
-chan floorCall;</declaration>
+ElevatorCallMessage eCallMsg;
+chan floorCall;
+chan elevatorCall;</declaration>
 	<template>
 		<name>ServiceQueue</name>
-		<location id="id0" x="0" y="0">
+		<declaration>typedef struct {
+    int floorNumber;
+    Direction direction;
+    bool isElevatorCall;
+} Request;
+
+Request queue[10]; // Assuming a maximum of 10 requests
+int queueSize = 0;
+bool elevatorBusy = false;
+
+void appendElevatorRequest(ElevatorCallMessage&amp; eCallMsg) {
+
+    queue[queueSize].floorNumber = eCallMsg.selected_floor;
+	queue[queueSize].direction = 0; // Default direction for elevator calls
+	queue[queueSize].isElevatorCall = true;
+	queueSize++;
+}
+
+void appendFloorRequest(FloorCallMessage&amp; fCallMsg) {
+
+    queue[queueSize].floorNumber = fCallMsg.floor_called_from;
+    queue[queueSize].direction = fCallMsg.direction;
+    queue[queueSize].isElevatorCall = false;
+    queueSize++;
+}</declaration>
+		<location id="id0" x="-399" y="-102">
+			<name x="-416" y="-136">Idle</name>
+		</location>
+		<location id="id1" x="204" y="-102">
+			<name x="194" y="-132">Processing</name>
+		</location>
+		<location id="id2" x="-51" y="-212">
+			<name x="-110" y="-246">ReceivedElevator</name>
+		</location>
+		<location id="id3" x="-51" y="0">
+			<name x="-93" y="17">ReceivedFloor</name>
 		</location>
 		<init ref="id0"/>
+		<transition id="id4">
+			<source ref="id3"/>
+			<target ref="id1"/>
+			<label kind="assignment" x="51" y="-42">!elevatorBusy</label>
+		</transition>
+		<transition id="id5">
+			<source ref="id0"/>
+			<target ref="id3"/>
+			<label kind="synchronisation" x="-289" y="-93">floorCall?</label>
+			<label kind="assignment" x="-382" y="-34">appendFloorRequest(fCallMsg)</label>
+		</transition>
+		<transition id="id6">
+			<source ref="id2"/>
+			<target ref="id1"/>
+			<label kind="guard" x="59" y="-187">!elevatorBusy</label>
+		</transition>
+		<transition id="id7">
+			<source ref="id0"/>
+			<target ref="id2"/>
+			<label kind="synchronisation" x="-246" y="-153">elevatorCall?</label>
+			<label kind="assignment" x="-408" y="-195">appendElevatorRequest(eCallMsg)</label>
+		</transition>
 	</template>
 	<template>
 		<name>MainMotorController</name>
-		<location id="id1" x="0" y="0">
+		<location id="id8" x="0" y="0">
 		</location>
-		<init ref="id1"/>
+		<init ref="id8"/>
 	</template>
 	<template>
 		<name>DoorMotorController</name>
-		<location id="id2" x="0" y="0">
+		<location id="id9" x="0" y="0">
 		</location>
-		<init ref="id2"/>
+		<init ref="id9"/>
 	</template>
 	<template>
 		<name>ElevatorPanel</name>
-		<location id="id3" x="-450" y="17">
+		<location id="id10" x="-450" y="17">
 			<name x="-460" y="-17">Idle</name>
 		</location>
-		<location id="id4" x="-178" y="17">
+		<location id="id11" x="-178" y="17">
 			<name x="-220" y="-17">ButtonPressed</name>
 		</location>
-		<location id="id5" x="-110" y="170">
+		<location id="id12" x="-110" y="170">
 			<name x="-154" y="136">ElevatorMoving</name>
 		</location>
-		<location id="id6" x="-323" y="263">
+		<location id="id13" x="-323" y="263">
 			<name x="-365" y="220">FloorReached</name>
 		</location>
-		<init ref="id3"/>
-		<transition id="id7">
-			<source ref="id3"/>
-			<target ref="id4"/>
+		<init ref="id10"/>
+		<transition id="id14">
+			<source ref="id10"/>
+			<target ref="id11"/>
 		</transition>
 	</template>
 	<template>
 		<name>FloorDoor</name>
-		<location id="id8" x="76" y="-17">
+		<location id="id15" x="76" y="-17">
 			<name x="59" y="-51">Open</name>
 		</location>
-		<location id="id9" x="-179" y="-17">
+		<location id="id16" x="-179" y="-17">
 			<name x="-204" y="-51">Closed</name>
 		</location>
-		<init ref="id8"/>
-		<transition id="id10">
-			<source ref="id9"/>
-			<target ref="id8"/>
+		<init ref="id15"/>
+		<transition id="id17">
+			<source ref="id16"/>
+			<target ref="id15"/>
 		</transition>
 	</template>
 	<template>
@@ -88,30 +152,30 @@ chan floorCall;</declaration>
 		<parameter>const fp_id id</parameter>
 		<declaration>bool upPressed;
 bool downPressed;</declaration>
-		<location id="id11" x="-731" y="-246">
+		<location id="id18" x="-731" y="-246">
 			<name x="-748" y="-280">Idle</name>
 		</location>
-		<location id="id12" x="-493" y="-135">
+		<location id="id19" x="-493" y="-135">
 			<name x="-527" y="-169">UpPressed</name>
 		</location>
-		<location id="id13" x="-493" y="-348">
+		<location id="id20" x="-493" y="-348">
 			<name x="-535" y="-382">DownPressed</name>
 		</location>
-		<init ref="id11"/>
-		<transition id="id14">
-			<source ref="id11"/>
-			<target ref="id13"/>
-			<label kind="guard" x="-714" y="-374">downPressed == true;</label>
+		<init ref="id18"/>
+		<transition id="id21">
+			<source ref="id18"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-714" y="-374">downPressed == true</label>
 			<label kind="synchronisation" x="-713" y="-314">floorCall!</label>
 			<label kind="assignment" x="-790" y="-357">fCallMsg.floor_called_from = id,
 fCallMsg.direction=-1</label>
 		</transition>
-		<transition id="id15">
-			<source ref="id11"/>
-			<target ref="id12"/>
-			<label kind="select" x="-713" y="-241">upPressed = true;</label>
+		<transition id="id22">
+			<source ref="id18"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-713" y="-224">upPressed == true</label>
 			<label kind="synchronisation" x="-705" y="-195">floorCall!</label>
-			<label kind="assignment" x="-790" y="-170">fCallMsg.floor_called_from = id,
+			<label kind="assignment" x="-833" y="-153">fCallMsg.floor_called_from = id,
 fCallMsg.direction=1</label>
 		</transition>
 	</template>
@@ -119,19 +183,19 @@ fCallMsg.direction=1</label>
 		<name x="5" y="5">ElevatorManager</name>
 		<declaration>// Place local declarations here.
 </declaration>
-		<location id="id16" x="-331" y="-229">
+		<location id="id23" x="-331" y="-229">
 			<name x="-365" y="-263">inService</name>
 		</location>
-		<location id="id17" x="-212" y="-8">
+		<location id="id24" x="-212" y="-8">
 			<name x="-246" y="-42">floorStop</name>
 		</location>
-		<location id="id18" x="-139" y="-229">
+		<location id="id25" x="-139" y="-229">
 			<name x="-173" y="-263">noOperations</name>
 		</location>
-		<location id="id19" x="0" y="-110">
+		<location id="id26" x="0" y="-110">
 			<name x="-34" y="-144">inMaintenance</name>
 		</location>
-		<init ref="id16"/>
+		<init ref="id23"/>
 	</template>
 	<system>// Place template instantiations here.
 
@@ -139,8 +203,9 @@ Fp_0 = FloorPanel(0);
 Fp_1 = FloorPanel(1);
 Fp_2 = FloorPanel(2);
 Fp_3 = FloorPanel(3);
+SQ = ServiceQueue();
 // List one or more processes to be composed into a system.
-system Fp_0, Fp_1, Fp_2, Fp_3;
+system Fp_0, SQ;
 </system>
 	<queries>
 		<query>
