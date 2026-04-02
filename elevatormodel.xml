@@ -2,19 +2,145 @@
 <!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
 <nta>
 	<declaration>// Place global declarations here.
-</declaration>
+
+const int num_floors = 4;                 // Number of tasks
+typedef int[0,num_floors-1] fp_id;
+
+typedef int Direction; // -1 for down, 0 for idle, 1 for up
+
+typedef struct {
+    int selected_floor;
+    Direction direction;
+} Display;
+
+
+typedef struct {
+    int floor_called_from;
+    Direction direction;
+} FloorCallMessage;
+
+
+int current_floor;
+bool overloaded;
+bool motion_detected;
+
+bool floors[num_floors] = {true, false, false, false}; // if elevator at that floor
+bool elevatorButtons[num_floors] = {true, false, false, false}; // if elevator at that floor
+bool floorButtons[num_floors] = {true, false, false, false}; // if elevator at that floor
+
+
+FloorCallMessage fCallMsg;
+chan floorCall;</declaration>
 	<template>
-		<name x="5" y="5">Elevator</name>
-		<declaration>// Place local declarations here.
-</declaration>
+		<name>ServiceQueue</name>
 		<location id="id0" x="0" y="0">
 		</location>
 		<init ref="id0"/>
 	</template>
+	<template>
+		<name>MainMotorController</name>
+		<location id="id1" x="0" y="0">
+		</location>
+		<init ref="id1"/>
+	</template>
+	<template>
+		<name>DoorMotorController</name>
+		<location id="id2" x="0" y="0">
+		</location>
+		<init ref="id2"/>
+	</template>
+	<template>
+		<name>ElevatorPanel</name>
+		<location id="id3" x="-450" y="17">
+			<name x="-460" y="-17">Idle</name>
+		</location>
+		<location id="id4" x="-178" y="17">
+			<name x="-220" y="-17">ButtonPressed</name>
+		</location>
+		<location id="id5" x="-110" y="170">
+			<name x="-154" y="136">ElevatorMoving</name>
+		</location>
+		<location id="id6" x="-323" y="263">
+			<name x="-365" y="220">FloorReached</name>
+		</location>
+		<init ref="id3"/>
+		<transition id="id7">
+			<source ref="id3"/>
+			<target ref="id4"/>
+		</transition>
+	</template>
+	<template>
+		<name>FloorDoor</name>
+		<location id="id8" x="76" y="-17">
+			<name x="59" y="-51">Open</name>
+		</location>
+		<location id="id9" x="-179" y="-17">
+			<name x="-204" y="-51">Closed</name>
+		</location>
+		<init ref="id8"/>
+		<transition id="id10">
+			<source ref="id9"/>
+			<target ref="id8"/>
+		</transition>
+	</template>
+	<template>
+		<name>FloorPanel</name>
+		<parameter>const fp_id id</parameter>
+		<declaration>bool upPressed;
+bool downPressed;</declaration>
+		<location id="id11" x="-731" y="-246">
+			<name x="-748" y="-280">Idle</name>
+		</location>
+		<location id="id12" x="-493" y="-135">
+			<name x="-527" y="-169">UpPressed</name>
+		</location>
+		<location id="id13" x="-493" y="-348">
+			<name x="-535" y="-382">DownPressed</name>
+		</location>
+		<init ref="id11"/>
+		<transition id="id14">
+			<source ref="id11"/>
+			<target ref="id13"/>
+			<label kind="guard" x="-714" y="-374">downPressed == true;</label>
+			<label kind="synchronisation" x="-713" y="-314">floorCall!</label>
+			<label kind="assignment" x="-790" y="-357">fCallMsg.floor_called_from = id,
+fCallMsg.direction=-1</label>
+		</transition>
+		<transition id="id15">
+			<source ref="id11"/>
+			<target ref="id12"/>
+			<label kind="select" x="-713" y="-241">upPressed = true;</label>
+			<label kind="synchronisation" x="-705" y="-195">floorCall!</label>
+			<label kind="assignment" x="-790" y="-170">fCallMsg.floor_called_from = id,
+fCallMsg.direction=1</label>
+		</transition>
+	</template>
+	<template>
+		<name x="5" y="5">ElevatorManager</name>
+		<declaration>// Place local declarations here.
+</declaration>
+		<location id="id16" x="-331" y="-229">
+			<name x="-365" y="-263">inService</name>
+		</location>
+		<location id="id17" x="-212" y="-8">
+			<name x="-246" y="-42">floorStop</name>
+		</location>
+		<location id="id18" x="-139" y="-229">
+			<name x="-173" y="-263">noOperations</name>
+		</location>
+		<location id="id19" x="0" y="-110">
+			<name x="-34" y="-144">inMaintenance</name>
+		</location>
+		<init ref="id16"/>
+	</template>
 	<system>// Place template instantiations here.
-Process = Template();
+
+Fp_0 = FloorPanel(0);
+Fp_1 = FloorPanel(1);
+Fp_2 = FloorPanel(2);
+Fp_3 = FloorPanel(3);
 // List one or more processes to be composed into a system.
-system Process;
+system Fp_0, Fp_1, Fp_2, Fp_3;
 </system>
 	<queries>
 		<query>
