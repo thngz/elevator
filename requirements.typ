@@ -128,8 +128,4 @@ The elevator control system consists of *10 components*. The elevator operates o
 
 
 		
-queue[queueSize].floorNumber = fCallMsg.floor_called_from;
-queue[queueSize].direction = fCallMsg.direction;
-queue[queueSize].isElevatorCall = false;
-queueSize++;
 			
