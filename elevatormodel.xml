@@ -34,10 +34,10 @@ GotoFloor gotoFloor;
 
 chan gotoFloorChannel;
 
-int current_floor = 0;
+int current_floor = 2;
 Direction currentDirection;
 
-int target_floor = 2; //TODO: Remove hardcode
+int target_floor = 0; //TODO: Remove hardcode
 Direction target_direction = 0;
 
 bool overloaded= false;
@@ -51,9 +51,10 @@ bool elevatorButtons[num_floors] = {false, false, false, false}; // if elevator 
 
 chan elevatorManagerChannel;
 chan elevatorGoto;
-chan elevatorArrived;</declaration>
+broadcast chan elevatorArrived;</declaration>
 	<template>
 		<name>User</name>
+		<declaration>clock t;</declaration>
 		<location id="id0" x="-1156" y="-68">
 			<name x="-1173" y="-102">Idle</name>
 		</location>
@@ -67,6 +68,7 @@ chan elevatorArrived;</declaration>
 		<transition id="id3">
 			<source ref="id1"/>
 			<target ref="id0"/>
+			<label kind="guard" x="-1062" y="-280">t &gt;= 30</label>
 			<label kind="assignment" x="-1122" y="-246">floorButtons[0].up = false</label>
 			<nail x="-875" y="-255"/>
 			<nail x="-1156" y="-255"/>
@@ -74,7 +76,8 @@ chan elevatorArrived;</declaration>
 		<transition id="id4">
 			<source ref="id0"/>
 			<target ref="id1"/>
-			<label kind="assignment" x="-1122" y="-59">floorButtons[0].up = true</label>
+			<label kind="assignment" x="-1122" y="-59">floorButtons[0].up = true,
+t = 0</label>
 		</transition>
 	</template>
 	<template>
@@ -107,7 +110,13 @@ void appendFloorRequest(FloorCall&amp; f) {
 
 void processQueue() {
     target_floor = queue[0].floorNumber;
-    target_direction = target_floor &gt; current_floor? 1 : -1;
+    //target_direction = target_floor &gt; current_floor ? 1 : -1;
+    target_direction = 0;
+    if (target_floor &gt; current_floor) {
+        target_direction = 1;
+    } else if (target_floor &lt; current_floor) {
+        target_direction = -1;
+    } 
     if (queueSize &gt; 0) {
         int i;
         for (i = 0; i &lt; queueSize - 1; i++) {
@@ -208,6 +217,7 @@ elevatorBusy = true</label>
 			<source ref="id16"/>
 			<target ref="id17"/>
 			<label kind="synchronisation" x="-59" y="8">elevatorGoto?</label>
+			<label kind="assignment" x="-136" y="34">currentDirection = target_direction</label>
 		</transition>
 	</template>
 	<template>
