@@ -3,7 +3,6 @@
 <nta>
 	<declaration>const int num_floors = 4;                 // Number of floors
 typedef int[0,num_floors-1] f_id;        // Floor ids
-
 typedef int Direction; // -1 for down, 0 for idle, 1 for up
 
 // Holds the data for a floor call, which floor it was called from and which direction it needs to go.
@@ -12,7 +11,6 @@ typedef struct {
     int floor_called_from;
     Direction direction; 
 } FloorCall;
-
 FloorCall floorCall; // actual global instance which gets modified.
 
 // Encapsulates up/down buttons at each floor
@@ -20,26 +18,27 @@ typedef struct {
     bool up;
     bool down;
 } FloorButton;
-
 FloorButton floorButtons[num_floors];
-
-chan floorCallChannel[num_floors];
-
 
 typedef struct {
     int selected_floor;
 } GotoFloor;
-
 GotoFloor gotoFloor;
 
-chan gotoFloorChannel;
 
-int current_floor = 2;
-Direction currentDirection;
-
-int target_floor = 0; //TODO: Remove hardcode
+// elevator state
+int current_floor     = 0;
+int target_floor      = 0;
+Direction currentDirection = 0;
 Direction target_direction = 0;
 
+bool hasElevatorArrived(int current, int target) {
+    if (current == target) {return true;}
+    return false;
+}
+
+
+// passive data structures
 bool overloaded= false;
 bool motion_detected = false;
 bool inMaintenance = false;
@@ -48,36 +47,42 @@ bool inMaintenance = false;
 bool floors[num_floors] = {true, false, false, false}; // if elevator at that floor
 bool elevatorButtons[num_floors] = {false, false, false, false}; // if elevator is called to that floor
 
-
-chan elevatorManagerChannel;
+// channels
+chan floorCallChannel[num_floors];
+chan gotoFloorChannel;
+chan serviceQueueProcessed;
 chan elevatorGoto;
-broadcast chan elevatorArrived;</declaration>
+broadcast chan elevatorArrivedChannel;</declaration>
 	<template>
 		<name>User</name>
 		<declaration>clock t;</declaration>
-		<location id="id0" x="-1156" y="-68">
-			<name x="-1173" y="-102">Idle</name>
+		<location id="id0" x="-1251" y="-578">
+			<name x="-1268" y="-612">Idle</name>
 		</location>
-		<location id="id1" x="-874" y="-68">
-			<name x="-884" y="-102">Pressed</name>
+		<location id="id1" x="-899" y="-578">
+			<name x="-926" y="-612">Pressed</name>
 		</location>
-		<location id="id2" x="-578" y="-68">
-			<name x="-612" y="-102">SelectedFloor</name>
+		<location id="id2" x="-501" y="-578">
+			<name x="-535" y="-612">InElevator</name>
+		</location>
+		<location id="id3" x="-501" y="-799">
+			<name x="-511" y="-833">elevatorButtonPressed</name>
 		</location>
 		<init ref="id0"/>
-		<transition id="id3">
-			<source ref="id1"/>
-			<target ref="id0"/>
-			<label kind="guard" x="-1062" y="-280">t &gt;= 30</label>
-			<label kind="assignment" x="-1122" y="-246">floorButtons[0].up = false</label>
-			<nail x="-875" y="-255"/>
-			<nail x="-1156" y="-255"/>
-		</transition>
 		<transition id="id4">
+			<source ref="id2"/>
+			<target ref="id3"/>
+			<label kind="assignment" x="-459" y="-697">elevatorButtons[0] = true</label>
+		</transition>
+		<transition id="id5">
+			<source ref="id1"/>
+			<target ref="id2"/>
+			<label kind="synchronisation" x="-824" y="-578">elevatorArrivedChannel?</label>
+		</transition>
+		<transition id="id6">
 			<source ref="id0"/>
 			<target ref="id1"/>
-			<label kind="assignment" x="-1122" y="-59">floorButtons[0].up = true,
-t = 0</label>
+			<label kind="assignment" x="-1181" y="-578">floorButtons[3].down = true</label>
 		</transition>
 	</template>
 	<template>
@@ -108,144 +113,117 @@ void appendFloorRequest(FloorCall&amp; f) {
     queueSize++;
 }
 
+
 void processQueue() {
-    target_floor = queue[0].floorNumber;
-    //target_direction = target_floor &gt; current_floor ? 1 : -1;
-    target_direction = 0;
-    if (target_floor &gt; current_floor) {
-        target_direction = 1;
-    } else if (target_floor &lt; current_floor) {
-        target_direction = -1;
-    } 
-    if (queueSize &gt; 0) {
-        int i;
-        for (i = 0; i &lt; queueSize - 1; i++) {
-            queue[i] = queue[i + 1];
+    int best = 0;
+    int i;
+    // 1) Look for a request in-direction and ahead
+    for (i = 0; i &lt; queueSize; i++) {
+        if (currentDirection == 1
+            &amp;&amp; queue[i].floorNumber &gt; current_floor) {
+            best = i; 
         }
-        queueSize--;
+        if (currentDirection == -1
+            &amp;&amp; queue[i].floorNumber &lt; current_floor) {
+            best = i;
+        }
     }
+    // 2) Set globals from chosen entry
+    target_floor = queue[best].floorNumber;
+    if (target_floor &gt; current_floor)      target_direction = 1;
+    else if (target_floor &lt; current_floor) target_direction = -1;
+    else                                    target_direction = 0;
+
+    // 3) Remove chosen entry (shift left)
+    for (i = best; i &lt; queueSize - 1; i++) {
+        queue[i] = queue[i + 1];
+    }
+    queueSize--;
 }</declaration>
-		<location id="id5" x="-399" y="-102">
+		<location id="id7" x="-399" y="-102">
 			<name x="-416" y="-136">Idle</name>
 		</location>
-		<location id="id6" x="170" y="-102">
+		<location id="id8" x="170" y="-102">
 			<name x="136" y="-93">Processing</name>
 		</location>
-		<location id="id7" x="-68" y="-212">
+		<location id="id9" x="-68" y="-212">
 			<name x="-136" y="-246">ReceivedGotoFloor</name>
 		</location>
-		<location id="id8" x="-68" y="0">
+		<location id="id10" x="-68" y="0">
 			<name x="-119" y="17">ReceivedFloor</name>
 		</location>
-		<init ref="id5"/>
-		<transition id="id9">
-			<source ref="id6"/>
-			<target ref="id6"/>
-			<label kind="synchronisation" x="229" y="-119">elevatorArrived?</label>
-			<label kind="assignment" x="229" y="-102">elevatorBusy = false</label>
-			<nail x="340" y="-102"/>
-			<nail x="340" y="-170"/>
-			<nail x="204" y="-170"/>
-		</transition>
-		<transition id="id10">
-			<source ref="id6"/>
-			<target ref="id5"/>
+		<init ref="id7"/>
+		<transition id="id11">
+			<source ref="id8"/>
+			<target ref="id7"/>
 			<label kind="guard" x="-204" y="-340">queueSize == 0</label>
+			<label kind="assignment" x="-458" y="-314">elevatorBusy = false</label>
 			<nail x="170" y="-314"/>
 			<nail x="-476" y="-314"/>
 			<nail x="-476" y="-102"/>
 		</transition>
-		<transition id="id11">
-			<source ref="id6"/>
-			<target ref="id6"/>
+		<transition id="id12">
+			<source ref="id8"/>
+			<target ref="id8"/>
 			<label kind="guard" x="204" y="77">queueSize &gt; 0 &amp;&amp; !elevatorBusy</label>
-			<label kind="synchronisation" x="178" y="43">elevatorManagerChannel!</label>
+			<label kind="synchronisation" x="178" y="43">serviceQueueProcessed!</label>
 			<label kind="assignment" x="195" y="94">processQueue(),
 elevatorBusy = true</label>
 			<nail x="170" y="69"/>
 			<nail x="374" y="69"/>
 			<nail x="374" y="-8"/>
 		</transition>
-		<transition id="id12">
-			<source ref="id8"/>
-			<target ref="id6"/>
-		</transition>
 		<transition id="id13">
-			<source ref="id5"/>
+			<source ref="id10"/>
 			<target ref="id8"/>
+			<label kind="guard" x="-17" y="-85">!elevatorBusy</label>
+		</transition>
+		<transition id="id14">
+			<source ref="id7"/>
+			<target ref="id10"/>
 			<label kind="select" x="-255" y="-102">i: f_id</label>
 			<label kind="synchronisation" x="-255" y="-85">floorCallChannel[i]?</label>
 			<label kind="assignment" x="-374" y="-17">appendFloorRequest(floorCall)</label>
 		</transition>
-		<transition id="id14">
-			<source ref="id7"/>
-			<target ref="id6"/>
-		</transition>
 		<transition id="id15">
-			<source ref="id5"/>
-			<target ref="id7"/>
+			<source ref="id9"/>
+			<target ref="id8"/>
+			<label kind="guard" x="8" y="-204">!elevatorBusy</label>
+		</transition>
+		<transition id="id16">
+			<source ref="id7"/>
+			<target ref="id9"/>
 			<label kind="synchronisation" x="-255" y="-153">gotoFloorChannel?</label>
 			<label kind="assignment" x="-399" y="-212">appendElevatorRequest(gotoFloor)</label>
 		</transition>
 	</template>
 	<template>
-		<name>MainMotorController</name>
-		<location id="id16" x="-144" y="8">
-			<name x="-170" y="-25">Idle</name>
-		</location>
-		<location id="id17" x="153" y="8">
-			<name x="127" y="-25">Moving</name>
-		</location>
-		<init ref="id16"/>
-		<transition id="id18">
-			<source ref="id17"/>
-			<target ref="id16"/>
-			<label kind="synchronisation" x="-68" y="-51">elevatorArrived!</label>
-			<nail x="102" y="-34"/>
-			<nail x="-102" y="-34"/>
-		</transition>
-		<transition id="id19">
-			<source ref="id17"/>
-			<target ref="id17"/>
-			<label kind="guard" x="255" y="51">current_floor != target_floor</label>
-			<label kind="assignment" x="153" y="136">current_floor += currentDirection</label>
-			<nail x="153" y="110"/>
-			<nail x="238" y="110"/>
-			<nail x="238" y="8"/>
-		</transition>
-		<transition id="id20">
-			<source ref="id16"/>
-			<target ref="id17"/>
-			<label kind="synchronisation" x="-59" y="8">elevatorGoto?</label>
-			<label kind="assignment" x="-136" y="34">currentDirection = target_direction</label>
-		</transition>
-	</template>
-	<template>
 		<name>DoorMotorController</name>
-		<location id="id21" x="0" y="0">
+		<location id="id17" x="0" y="0">
 		</location>
-		<init ref="id21"/>
+		<init ref="id17"/>
 	</template>
 	<template>
 		<name>ElevatorPanel</name>
-		<location id="id22" x="-501" y="17">
+		<location id="id18" x="-501" y="17">
 			<name x="-518" y="-17">Idle</name>
 		</location>
-		<location id="id23" x="-51" y="17">
+		<location id="id19" x="-51" y="17">
 			<name x="-93" y="-17">ButtonPressed</name>
 		</location>
-		<init ref="id22"/>
-		<transition id="id24">
-			<source ref="id23"/>
-			<target ref="id22"/>
+		<init ref="id18"/>
+		<transition id="id20">
+			<source ref="id19"/>
+			<target ref="id18"/>
 			<label kind="select" x="-408" y="-170">i: f_id</label>
+			<label kind="synchronisation" x="-408" y="-119">elevatorArrivedChannel?</label>
 			<label kind="assignment" x="-408" y="-136">elevatorButtons[i] = false</label>
 			<nail x="-51" y="-144"/>
 			<nail x="-501" y="-144"/>
 		</transition>
-		<transition id="id25">
-			<source ref="id22"/>
-			<target ref="id23"/>
+		<transition id="id21">
+			<source ref="id18"/>
+			<target ref="id19"/>
 			<label kind="select" x="-408" y="-34">i: f_id</label>
 			<label kind="guard" x="-408" y="-8">elevatorButtons[i] == true</label>
 			<label kind="synchronisation" x="-408" y="17">gotoFloorChannel!</label>
@@ -254,116 +232,113 @@ elevatorBusy = true</label>
 	</template>
 	<template>
 		<name>FloorDoor</name>
-		<location id="id26" x="76" y="-17">
+		<location id="id22" x="76" y="-17">
 			<name x="59" y="-51">Open</name>
 		</location>
-		<location id="id27" x="-179" y="-17">
+		<location id="id23" x="-179" y="-17">
 			<name x="-204" y="-51">Closed</name>
 		</location>
-		<init ref="id26"/>
-		<transition id="id28">
-			<source ref="id27"/>
-			<target ref="id26"/>
+		<init ref="id22"/>
+		<transition id="id24">
+			<source ref="id23"/>
+			<target ref="id22"/>
 		</transition>
 	</template>
 	<template>
 		<name>FloorPanel</name>
 		<parameter>const f_id id</parameter>
-		<location id="id29" x="-731" y="-246">
-			<name x="-748" y="-280">Idle</name>
+		<location id="id25" x="-790" y="-238">
+			<name x="-841" y="-246">Idle</name>
 		</location>
-		<location id="id30" x="-433" y="-246">
-			<name x="-467" y="-280">UpPressed</name>
+		<location id="id26" x="-425" y="-306">
+			<name x="-408" y="-314">UpPressed</name>
 		</location>
-		<location id="id31" x="-433" y="-399">
-			<name x="-475" y="-433">DownPressed</name>
+		<location id="id27" x="-425" y="-161">
+			<name x="-408" y="-170">DownPressed</name>
 		</location>
-		<init ref="id29"/>
-		<transition id="id32">
-			<source ref="id31"/>
-			<target ref="id29"/>
-			<nail x="-484" y="-450"/>
-			<nail x="-850" y="-450"/>
-			<nail x="-850" y="-246"/>
+		<init ref="id25"/>
+		<transition id="id28">
+			<source ref="id27"/>
+			<target ref="id25"/>
+			<label kind="synchronisation" x="-705" y="-34">elevatorArrivedChannel?</label>
+			<label kind="assignment" x="-739" y="-17">floorButtons[id].down = false</label>
+			<nail x="-425" y="-34"/>
+			<nail x="-790" y="-34"/>
 		</transition>
-		<transition id="id33">
-			<source ref="id30"/>
-			<target ref="id29"/>
-			<nail x="-433" y="-51"/>
-			<nail x="-850" y="-51"/>
-			<nail x="-850" y="-246"/>
+		<transition id="id29">
+			<source ref="id26"/>
+			<target ref="id25"/>
+			<label kind="synchronisation" x="-714" y="-467">elevatorArrivedChannel?</label>
+			<label kind="assignment" x="-714" y="-442">floorButtons[id].up = false</label>
+			<nail x="-425" y="-442"/>
+			<nail x="-790" y="-442"/>
 		</transition>
-		<transition id="id34">
-			<source ref="id29"/>
-			<target ref="id31"/>
-			<label kind="guard" x="-748" y="-425">floorButtons[id].down == true</label>
-			<label kind="synchronisation" x="-748" y="-357">floorCallChannel[id]!</label>
-			<label kind="assignment" x="-748" y="-399">floorCall.floor_called_from = id,
+		<transition id="id30">
+			<source ref="id25"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-748" y="-178">floorButtons[id].down == true</label>
+			<label kind="synchronisation" x="-748" y="-161">floorCallChannel[id]!</label>
+			<label kind="assignment" x="-748" y="-144">floorCall.floor_called_from = id,
 floorCall.direction=-1</label>
 		</transition>
-		<transition id="id35">
-			<source ref="id29"/>
-			<target ref="id30"/>
-			<label kind="guard" x="-705" y="-246">floorButtons[id].up == true</label>
-			<label kind="synchronisation" x="-705" y="-263">floorCallChannel[id]!</label>
-			<label kind="assignment" x="-705" y="-229">floorCall.floor_called_from = id,
+		<transition id="id31">
+			<source ref="id25"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-748" y="-348">floorButtons[id].up == true</label>
+			<label kind="synchronisation" x="-748" y="-365">floorCallChannel[id]!</label>
+			<label kind="assignment" x="-748" y="-331">floorCall.floor_called_from = id,
 floorCall.direction = 1</label>
 		</transition>
 	</template>
 	<template>
 		<name x="5" y="5">ElevatorManager</name>
-		<location id="id36" x="-671" y="-739">
-			<name x="-705" y="-773">inService</name>
+		<location id="id32" x="-484" y="-858">
+			<name x="-518" y="-901">inService</name>
 		</location>
-		<location id="id37" x="-671" y="-510">
-			<name x="-705" y="-493">floorStop</name>
+		<location id="id33" x="-484" y="-629">
+			<name x="-518" y="-612">floorStop</name>
 		</location>
-		<location id="id38" x="-1113" y="-739">
-			<name x="-1155" y="-773">noOperations</name>
+		<location id="id34" x="-926" y="-858">
+			<name x="-968" y="-892">noOperations</name>
 		</location>
-		<location id="id39" x="-1113" y="-510">
-			<name x="-1156" y="-493">inMaintenance</name>
+		<location id="id35" x="-926" y="-629">
+			<name x="-969" y="-612">inMaintenance</name>
 		</location>
-		<location id="id40" x="-671" y="-637">
-			<name x="-654" y="-646">mainEngineCalled</name>
-		</location>
-		<init ref="id38"/>
+		<init ref="id34"/>
+		<transition id="id36">
+			<source ref="id32"/>
+			<target ref="id32"/>
+			<label kind="guard" x="-629" y="-952">!hasElevatorArrived(current_floor, target_floor)</label>
+			<label kind="assignment" x="-620" y="-935">current_floor += target_direction</label>
+			<nail x="-390" y="-918"/>
+			<nail x="-569" y="-918"/>
+		</transition>
+		<transition id="id37">
+			<source ref="id32"/>
+			<target ref="id33"/>
+			<label kind="guard" x="-646" y="-807">hasElevatorArrived(current_floor, target_floor)</label>
+			<label kind="synchronisation" x="-561" y="-765">elevatorArrivedChannel!</label>
+		</transition>
+		<transition id="id38">
+			<source ref="id35"/>
+			<target ref="id34"/>
+		</transition>
+		<transition id="id39">
+			<source ref="id33"/>
+			<target ref="id35"/>
+			<label kind="guard" x="-782" y="-654">inMaintenance == true</label>
+		</transition>
+		<transition id="id40">
+			<source ref="id33"/>
+			<target ref="id32"/>
+			<label kind="synchronisation" x="-229" y="-765">serviceQueueProcessed?</label>
+			<nail x="-229" y="-629"/>
+			<nail x="-229" y="-858"/>
+		</transition>
 		<transition id="id41">
-			<source ref="id40"/>
-			<target ref="id37"/>
-			<label kind="synchronisation" x="-663" y="-586">elevatorArrived?</label>
-		</transition>
-		<transition id="id42">
-			<source ref="id36"/>
-			<target ref="id40"/>
-			<label kind="synchronisation" x="-663" y="-705">elevatorGoto!</label>
-		</transition>
-		<transition id="id43">
-			<source ref="id38"/>
-			<target ref="id37"/>
-			<label kind="guard" x="-1045" y="-663">target_floor == current_floor</label>
-			<label kind="synchronisation" x="-1045" y="-637">elevatorManagerChannel?</label>
-		</transition>
-		<transition id="id44">
-			<source ref="id39"/>
-			<target ref="id38"/>
-		</transition>
-		<transition id="id45">
-			<source ref="id37"/>
-			<target ref="id39"/>
-			<label kind="guard" x="-969" y="-535">inMaintenance == true</label>
-		</transition>
-		<transition id="id46">
-			<source ref="id37"/>
-			<target ref="id36"/>
-			<label kind="synchronisation" x="-510" y="-646">elevatorManagerChannel?</label>
-			<nail x="-510" y="-510"/>
-			<nail x="-510" y="-739"/>
-		</transition>
-		<transition id="id47">
-			<source ref="id38"/>
-			<target ref="id36"/>
-			<label kind="synchronisation" x="-1003" y="-765">elevatorManagerChannel?</label>
+			<source ref="id34"/>
+			<target ref="id32"/>
+			<label kind="synchronisation" x="-816" y="-884">serviceQueueProcessed?</label>
 		</transition>
 	</template>
 	<system>// Place template instantiations here.
@@ -371,17 +346,17 @@ floorCall.direction = 1</label>
 floor_panel_0 = FloorPanel(0);
 Fp_1 = FloorPanel(1);
 Fp_2 = FloorPanel(2);
-Fp_3 = FloorPanel(3);
+floor_panel_3 = FloorPanel(3);
 elevator_panel = ElevatorPanel();
 
 service_queue = ServiceQueue();
 elevator_manager = ElevatorManager();
-main_motor_controller = MainMotorController();
+
 user = User();
 
 // List one or more processes to be composed into a system.
 //system floor_panel_0, service_queue, user, elevator_panel, elevator_manager;
-system user, floor_panel_0, service_queue, elevator_manager, main_motor_controller;
+system user, floor_panel_3, service_queue, elevator_panel, elevator_manager;
 </system>
 	<queries>
 		<query>
