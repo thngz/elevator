@@ -5,6 +5,9 @@
 typedef int[0,num_floors-1] f_id;        // Floor ids
 typedef int Direction; // -1 for down, 0 for idle, 1 for up
 
+const int DOOR_TIMEOUT = 5;
+const int FLOOR_TRAVEL_TIME = 3;
+
 // Holds the data for a floor call, which floor it was called from and which direction it needs to go.
 // Modified by floor panel, read by servicequeue once message is posted to floorCall channel
 typedef struct {
@@ -25,6 +28,14 @@ typedef struct {
 } GotoFloor;
 GotoFloor gotoFloor;
 
+typedef struct {
+    int display_floor;
+    Direction direction;
+} DisplayData;
+
+DisplayData floorDisplay[num_floors];
+DisplayData elevatorDisplay;
+
 
 // elevator state
 int current_floor     = 0;
@@ -43,7 +54,6 @@ bool hasElevatorArrived(int current, int target) {
 bool overloaded= false;
 bool motion_detected = false;
 bool inMaintenance = false;
-bool elevatorBusy = false;
 
 
 bool elevatorButtons[num_floors] = {false, false, false, false}; // if elevator is called to that floor
@@ -66,51 +76,47 @@ broadcast chan elevatorArrivedChannel;
 chan doorCloseChannel[num_floors];
 
 </declaration>
-<template>
-    <name>User</name>
-    <declaration>clock t;</declaration>
-    
-    <location id="id0" x="-1251" y="-578">
-        <name x="-1268" y="-612">Idle</name>
-    </location>
-    <location id="id1" x="-899" y="-578">
-        <name x="-926" y="-612">WaitingAtFloor</name>
-    </location>
-    <location id="id2" x="-501" y="-578">
-        <name x="-535" y="-612">InElevator</name>
-    </location>
-    
-    <init ref="id0"/>
-    
-    <transition>
-        <source ref="id0"/>
-        <target ref="id1"/>
-        <label kind="select">i: f_id</label>
-        <label kind="assignment">floorButtons[i].up = true</label>
-    </transition>
-    
-    <transition>
-        <source ref="id0"/>
-        <target ref="id1"/>
-        <label kind="select">i: f_id</label>
-        <label kind="assignment">floorButtons[i].down = true</label>
-    </transition>
-    
-    <transition>
-        <source ref="id1"/>
-        <target ref="id2"/>
-        <label kind="synchronisation">elevatorArrivedChannel?</label>
-    </transition>
-    
-    <transition>
-        <source ref="id2"/>
-        <target ref="id0"/>
-        <label kind="select">i: f_id</label>
-        <label kind="guard">i != current_floor</label>
-        <label kind="assignment">elevatorButtons[i] = true</label>
-    </transition>
-    
-</template>
+	<template>
+		<name>User</name>
+		<declaration>clock t;</declaration>
+		<location id="id0" x="-1251" y="-578">
+			<name x="-1268" y="-612">Idle</name>
+		</location>
+		<location id="id1" x="-1249" y="-314">
+			<name x="-1292" y="-297">WaitingAtFloor</name>
+		</location>
+		<location id="id2" x="-501" y="-578">
+			<name x="-535" y="-612">InElevator</name>
+		</location>
+		<init ref="id0"/>
+		<transition id="id3">
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="select" x="-1470" y="-493">i: f_id</label>
+			<label kind="assignment" x="-1479" y="-442">floorButtons[i].down = true</label>
+		</transition>
+		<transition id="id4">
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="select" x="-1198" y="-476">i: f_id</label>
+			<label kind="assignment" x="-1198" y="-450">floorButtons[i].up = true</label>
+			<nail x="-1206" y="-514"/>
+			<nail x="-1206" y="-353"/>
+		</transition>
+		<transition id="id5">
+			<source ref="id1"/>
+			<target ref="id2"/>
+			<label kind="synchronisation" x="-926" y="-408">elevatorArrivedChannel?</label>
+			<nail x="-909" y="-433"/>
+		</transition>
+		<transition id="id6">
+			<source ref="id2"/>
+			<target ref="id0"/>
+			<label kind="select" x="-936" y="-623">i: f_id</label>
+			<label kind="guard" x="-936" y="-608">i != current_floor</label>
+			<label kind="assignment" x="-936" y="-578">elevatorButtons[i] = true</label>
+		</transition>
+	</template>
 	<template>
 		<name>ServiceQueue</name>
 		<declaration>typedef struct {
@@ -174,9 +180,7 @@ void processQueue() {
 		<transition id="id8">
 			<source ref="id7"/>
 			<target ref="id7"/>
-			<label kind="guard" x="-170" y="-212">queueSize == 0 &amp;&amp;
-elevatorBusy</label>
-			<label kind="assignment" x="-170" y="-170">elevatorBusy = false</label>
+			<label kind="guard" x="-170" y="-212">queueSize == 0</label>
 			<nail x="144" y="-178"/>
 			<nail x="-17" y="-178"/>
 			<nail x="-17" y="-246"/>
@@ -184,11 +188,9 @@ elevatorBusy</label>
 		<transition id="id9">
 			<source ref="id7"/>
 			<target ref="id7"/>
-			<label kind="guard" x="-170" y="-331">queueSize &gt; 0 &amp;&amp;
-!elevatorBusy</label>
-			<label kind="synchronisation" x="-170" y="-348">serviceQueueProcessed!</label>
-			<label kind="assignment" x="-170" y="-288">processQueue(),
-elevatorBusy=true</label>
+			<label kind="guard" x="-170" y="-306">queueSize &gt; 0</label>
+			<label kind="synchronisation" x="-178" y="-331">serviceQueueProcessed!</label>
+			<label kind="assignment" x="-170" y="-288">processQueue()</label>
 			<nail x="144" y="-314"/>
 			<nail x="-17" y="-314"/>
 			<nail x="-17" y="-246"/>
@@ -216,12 +218,15 @@ elevatorBusy=true</label>
 	</template>
 	<template>
 		<name>DoorMotorController</name>
-		<declaration>bool doorOpen = false; // prevents doorCloseChannel from firing before the door has actually opened</declaration>
+		<declaration>bool doorOpen = false; // prevents doorCloseChannel from firing before the door has actually opened
+clock doorTimer;
+</declaration>
 		<location id="id12" x="-1326" y="-808">
 			<name x="-1352" y="-842">CloseDoor</name>
 		</location>
 		<location id="id13" x="-1666" y="-731">
 			<name x="-1718" y="-740">Idle</name>
+			<label kind="invariant" x="-1938" y="-739">doorTimer &lt;= DOOR_TIMEOUT</label>
 		</location>
 		<location id="id14" x="-1326" y="-655">
 			<name x="-1360" y="-689">OpenDoor</name>
@@ -231,7 +236,8 @@ elevatorBusy=true</label>
 			<source ref="id12"/>
 			<target ref="id13"/>
 			<label kind="assignment" x="-1632" y="-943">floorDoors[current_floor] = false,
-doorOpen = false</label>
+doorOpen = false,
+doorTimer = 0</label>
 			<nail x="-1326" y="-918"/>
 			<nail x="-1666" y="-918"/>
 		</transition>
@@ -246,13 +252,16 @@ doorOpen = true</label>
 		<transition id="id17">
 			<source ref="id13"/>
 			<target ref="id12"/>
-			<label kind="guard" x="-1632" y="-799">doorOpen == true</label>
+			<label kind="guard" x="-1496" y="-756">doorOpen == true &amp;&amp;
+doorTimer &gt;= DOOR_TIMEOUT &amp;&amp; !motion_detected</label>
 			<label kind="synchronisation" x="-1640" y="-824">doorCloseChannel[current_floor]?</label>
+			<label kind="assignment" x="-1632" y="-782">doorTimer = 0</label>
 		</transition>
 		<transition id="id18">
 			<source ref="id13"/>
 			<target ref="id14"/>
 			<label kind="synchronisation" x="-1615" y="-671">elevatorArrivedChannel?</label>
+			<label kind="assignment" x="-1623" y="-697">doorTimer = 0</label>
 		</transition>
 	</template>
 	<template>
@@ -336,8 +345,10 @@ floorCall.direction = 1</label>
 	</template>
 	<template>
 		<name x="5" y="5">ElevatorManager</name>
+		<declaration>clock travelTimer;</declaration>
 		<location id="id32" x="-484" y="-858">
 			<name x="-518" y="-901">inService</name>
+			<label kind="invariant" x="-416" y="-901">travelTimer &lt;= FLOOR_TRAVEL_TIME</label>
 		</location>
 		<location id="id33" x="-484" y="-629">
 			<name x="-518" y="-612">floorStop</name>
@@ -352,18 +363,26 @@ floorCall.direction = 1</label>
 		<transition id="id36">
 			<source ref="id32"/>
 			<target ref="id32"/>
-			<label kind="guard" x="-603" y="-1020">!overloaded &amp;&amp;
+			<label kind="guard" x="-612" y="-1147">!overloaded &amp;&amp;
 allDoorsClosed() &amp;&amp;
-!hasElevatorArrived(current_floor, target_floor)</label>
-			<label kind="assignment" x="-603" y="-960">current_floor += target_direction</label>
-			<nail x="-390" y="-918"/>
-			<nail x="-569" y="-918"/>
+!hasElevatorArrived(current_floor, target_floor) &amp;&amp;
+travelTimer &gt;= FLOOR_TRAVEL_TIME</label>
+			<label kind="assignment" x="-612" y="-1071">current_floor += target_direction,
+floorDisplay[current_floor].display_floor = current_floor,
+floorDisplay[current_floor].direction = target_direction,
+elevatorDisplay.display_floor = current_floor,
+elevatorDisplay.direction = target_direction,
+travelTimer = 0</label>
+			<nail x="-390" y="-944"/>
+			<nail x="-569" y="-944"/>
 		</transition>
 		<transition id="id37">
 			<source ref="id32"/>
 			<target ref="id33"/>
 			<label kind="guard" x="-646" y="-807">hasElevatorArrived(current_floor, target_floor)</label>
 			<label kind="synchronisation" x="-561" y="-782">elevatorArrivedChannel!</label>
+			<label kind="assignment" x="-595" y="-748">elevatorDisplay.direction = 0,
+floorDisplay[current_floor].direction = 0</label>
 		</transition>
 		<transition id="id38">
 			<source ref="id35"/>
@@ -392,8 +411,8 @@ allDoorsClosed() &amp;&amp;
 	<system>// Place template instantiations here.
 
 floor_panel_0 = FloorPanel(0);
-Fp_1 = FloorPanel(1);
-Fp_2 = FloorPanel(2);
+floor_panel_1 = FloorPanel(1);
+floor_panel_2 = FloorPanel(2);
 floor_panel_3 = FloorPanel(3);
 elevator_panel = ElevatorPanel();
 
@@ -406,7 +425,7 @@ user = User();
 
 // List one or more processes to be composed into a system.
 //system floor_panel_0, service_queue, user, elevator_panel, elevator_manager;
-system user, floor_panel_3, service_queue, elevator_panel, elevator_manager, door_motor_controller;
+system user,floor_panel_0,floor_panel_1,floor_panel_2, floor_panel_3, service_queue, elevator_panel, elevator_manager, door_motor_controller;
 </system>
 	<queries>
 		<query>
