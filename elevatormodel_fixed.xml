@@ -1,0 +1,494 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
+<nta>
+	<declaration>const int num_floors = 4;
+typedef int[0,num_floors-1] f_id;
+typedef int Direction; // -1 for down, 0 for idle, 1 for up
+
+const int DOOR_TIMEOUT = 5;
+const int FLOOR_TRAVEL_TIME = 3;
+
+typedef struct {
+    int floor_called_from;
+    Direction direction;
+} FloorCall;
+FloorCall floorCall;
+
+typedef struct {
+    bool up;
+    bool down;
+} FloorButton;
+FloorButton floorButtons[num_floors];
+
+typedef struct {
+    int selected_floor;
+} GotoFloor;
+GotoFloor gotoFloor;
+
+typedef struct {
+    int display_floor;
+    Direction direction;
+} DisplayData;
+
+DisplayData floorDisplay[num_floors];
+DisplayData elevatorDisplay;
+
+// elevator state
+int current_floor     = 0;
+int target_floor      = 0;
+Direction target_direction = 0;
+Direction currentDirection = 0;
+
+bool hasElevatorArrived(int current, int target) {
+    if (current == target) {return true;}
+    return false;
+}
+
+// passive data structures
+bool overloaded = false;
+bool motion_detected = false;
+bool inMaintenance = false;
+
+bool autoClosePending = false;
+
+bool elevatorButtons[num_floors] = {false, false, false, false};
+bool floorDoors[num_floors] = {false, false, false, false};
+
+bool allDoorsClosed() {
+    int i;
+    for (i = 0; i &lt; num_floors; i++) {
+        if (floorDoors[i]) {return false;}
+    }
+    return true;
+}
+
+// channels
+chan floorCallChannel[num_floors];
+chan gotoFloorChannel;
+chan serviceQueueProcessed;
+broadcast chan elevatorArrivedChannel;
+chan doorCloseChannel[num_floors];
+
+chan requestServiceQueue;
+</declaration>
+	<template>
+		<name>User</name>
+		<declaration>clock t;</declaration>
+		<location id="id0" x="-1251" y="-578">
+			<name x="-1268" y="-612">Idle</name>
+		</location>
+		<location id="id1" x="-1249" y="-314">
+			<name x="-1292" y="-297">WaitingAtFloor</name>
+		</location>
+		<location id="id2" x="-501" y="-578">
+			<name x="-535" y="-612">InElevator</name>
+		</location>
+		<init ref="id0"/>
+		<transition id="id3">
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="assignment" x="-1241" y="-493">floorButtons[0].up = true</label>
+			<nail x="-1249" y="-535"/>
+			<nail x="-1249" y="-374"/>
+		</transition>
+		<transition id="id4">
+			<source ref="id1"/>
+			<target ref="id2"/>
+			<label kind="synchronisation" x="-926" y="-408">elevatorArrivedChannel?</label>
+			<nail x="-909" y="-433"/>
+		</transition>
+		<transition id="id5">
+			<source ref="id2"/>
+			<target ref="id0"/>
+			<label kind="select" x="-936" y="-623">i: f_id</label>
+			<label kind="guard" x="-936" y="-608">i != current_floor</label>
+			<label kind="assignment" x="-936" y="-578">elevatorButtons[3] = true</label>
+		</transition>
+	</template>
+	<template>
+		<name>ServiceQueue</name>
+		<declaration>typedef struct {
+    int floorNumber;
+    Direction direction;
+    bool isElevatorCall;
+} Request;
+const int MAX_QUEUE = 10;
+Request queue[MAX_QUEUE];
+int queueSize = 0;
+
+void appendElevatorRequest(GotoFloor&amp; g) {
+    if (queueSize &lt;= MAX_QUEUE ) {return;}
+    queue[queueSize].floorNumber = g.selected_floor;
+    queue[queueSize].direction = 0;
+    queue[queueSize].isElevatorCall = true;
+    queueSize++;
+}
+
+void appendFloorRequest(FloorCall&amp; f) {
+    if (queueSize &lt;= MAX_QUEUE ) {return;}
+    queue[queueSize].floorNumber = f.floor_called_from;
+    queue[queueSize].direction = f.direction;
+    queue[queueSize].isElevatorCall = false;
+    queueSize++;
+}
+
+void processQueue() {
+    int best = 0;
+    int i;
+    int bestDist;
+    int dist;
+
+    if (currentDirection == 0) {
+        // idle: pick closest floor
+        bestDist = 999;
+        for (i = 0; i &lt; queueSize; i++) {
+            dist = queue[i].floorNumber - current_floor;
+            if (dist &lt; 0) { dist = -dist; }
+            if (dist &lt; bestDist) {
+                bestDist = dist;
+                best = i;
+            }
+        }
+    } else {
+
+        for (i = 0; i &lt; queueSize; i++) {
+            if (currentDirection == 1 &amp;&amp; queue[i].floorNumber &gt; current_floor) {
+                best = i;
+            }
+            if (currentDirection == -1 &amp;&amp; queue[i].floorNumber &lt; current_floor) {
+                best = i;
+            }
+        }
+    }
+
+    target_floor = queue[best].floorNumber;
+    if (target_floor &gt; current_floor)      target_direction = 1;
+    else if (target_floor &lt; current_floor) target_direction = -1;
+    else                                    target_direction = 0;
+
+    currentDirection = target_direction;
+
+    for (i = best; i &lt; queueSize - 1; i++) {
+        queue[i] = queue[i + 1];
+    }
+    queueSize--;
+}</declaration>
+		<location id="id6" x="144" y="-246">
+			<name x="153" y="-263">idle</name>
+		</location>
+		<init ref="id6"/>
+		<transition id="id7">
+			<source ref="id6"/>
+			<target ref="id6"/>
+			<label kind="guard" x="-170" y="-212">queueSize == 0</label>
+			<nail x="144" y="-178"/>
+			<nail x="-17" y="-178"/>
+			<nail x="-17" y="-246"/>
+		</transition>
+		<transition id="id8">
+			<source ref="id6"/>
+			<target ref="id6"/>
+			<label kind="guard" x="-170" y="-306">queueSize &gt; 0</label>
+			<label kind="synchronisation" x="-178" y="-331">serviceQueueProcessed!</label>
+			<label kind="assignment" x="-170" y="-288">processQueue()</label>
+			<nail x="144" y="-314"/>
+			<nail x="-17" y="-314"/>
+			<nail x="-17" y="-246"/>
+		</transition>
+		<transition id="id9">
+			<source ref="id6"/>
+			<target ref="id6"/>
+			<label kind="select" x="306" y="-246">i: f_id</label>
+			<label kind="synchronisation" x="306" y="-229">floorCallChannel[i]?</label>
+			<label kind="assignment" x="306" y="-212">appendFloorRequest(floorCall)</label>
+			<nail x="289" y="-246"/>
+			<nail x="289" y="-178"/>
+			<nail x="144" y="-178"/>
+		</transition>
+		<transition id="id10">
+			<source ref="id6"/>
+			<target ref="id6"/>
+			<label kind="synchronisation" x="297" y="-314">gotoFloorChannel?</label>
+			<label kind="assignment" x="297" y="-288">appendElevatorRequest(gotoFloor)</label>
+			<nail x="289" y="-246"/>
+			<nail x="289" y="-314"/>
+			<nail x="144" y="-314"/>
+			<nail x="144" y="-263"/>
+		</transition>
+	</template>
+	<template>
+		<name>DoorMotorController</name>
+		<declaration>clock doorTimer;</declaration>
+		<location id="id11" x="-1326" y="-808">
+			<name x="-1352" y="-842">CloseDoor</name>
+		</location>
+		<location id="id12" x="-1666" y="-808">
+			<name x="-1718" y="-817">Idle</name>
+		</location>
+		<location id="id13" x="-1326" y="-655">
+			<name x="-1360" y="-689">DoorOpen</name>
+			<label kind="invariant" x="-1385" y="-637">doorTimer &lt;= DOOR_TIMEOUT</label>
+		</location>
+		<init ref="id12"/>
+		<transition id="id14">
+			<source ref="id13"/>
+			<target ref="id11"/>
+			<label kind="guard" x="-1292" y="-756">doorTimer &gt;= DOOR_TIMEOUT &amp;&amp; !motion_detected</label>
+			<label kind="assignment" x="-1283" y="-731">floorDoors[current_floor] = false,
+doorTimer = 0</label>
+		</transition>
+		<transition id="id15">
+			<source ref="id13"/>
+			<target ref="id11"/>
+			<label kind="synchronisation" x="-1674" y="-612">doorCloseChannel[current_floor]?</label>
+			<label kind="assignment" x="-1674" y="-595">floorDoors[current_floor] = false,
+doorTimer = 0</label>
+		</transition>
+		<transition id="id16">
+			<source ref="id11"/>
+			<target ref="id12"/>
+			<label kind="assignment" x="-1572" y="-909">doorTimer = 0</label>
+			<nail x="-1326" y="-918"/>
+			<nail x="-1666" y="-918"/>
+		</transition>
+		<transition id="id17">
+			<source ref="id12"/>
+			<target ref="id13"/>
+			<label kind="synchronisation" x="-1700" y="-722">elevatorArrivedChannel?</label>
+			<label kind="assignment" x="-1691" y="-697">floorDoors[current_floor] = true,
+doorTimer = 0</label>
+		</transition>
+	</template>
+	<template>
+		<name>ElevatorPanel</name>
+		<location id="id18" x="-501" y="17">
+			<name x="-518" y="-17">Idle</name>
+		</location>
+		<location id="id19" x="-51" y="17">
+			<name x="-25" y="8">ButtonPressed</name>
+		</location>
+		<location id="id20" x="-51" y="-161">
+			<name x="-61" y="-195">Ready</name>
+		</location>
+		<init ref="id18"/>
+		<transition id="id21">
+			<source ref="id20"/>
+			<target ref="id18"/>
+			<label kind="synchronisation" x="-391" y="-178">elevatorArrivedChannel?</label>
+			<nail x="-501" y="-161"/>
+		</transition>
+		<transition id="id22">
+			<source ref="id19"/>
+			<target ref="id20"/>
+			<label kind="synchronisation" x="-42" y="-93">doorCloseChannel[current_floor]!</label>
+			<label kind="assignment" x="-42" y="-76">elevatorButtons[gotoFloor.selected_floor] = false,
+elevatorDisplay.display_floor = current_floor,
+elevatorDisplay.direction = target_direction</label>
+		</transition>
+		<transition id="id23">
+			<source ref="id18"/>
+			<target ref="id19"/>
+			<label kind="select" x="-408" y="-34">i: f_id</label>
+			<label kind="guard" x="-408" y="-8">elevatorButtons[i] == true &amp;&amp; i != current_floor</label>
+			<label kind="synchronisation" x="-408" y="17">gotoFloorChannel!</label>
+			<label kind="assignment" x="-408" y="42">gotoFloor.selected_floor = i,
+elevatorDisplay.display_floor = current_floor</label>
+		</transition>
+	</template>
+	<template>
+		<name>FloorPanel</name>
+		<parameter>const f_id id</parameter>
+		<location id="id24" x="-790" y="-238">
+			<name x="-841" y="-246">Idle</name>
+		</location>
+		<location id="id25" x="-425" y="-306">
+			<name x="-408" y="-314">UpPressed</name>
+		</location>
+		<location id="id26" x="-425" y="-161">
+			<name x="-408" y="-170">DownPressed</name>
+		</location>
+		<init ref="id24"/>
+		<transition id="id27">
+			<source ref="id26"/>
+			<target ref="id24"/>
+			<label kind="synchronisation" x="-705" y="-34">elevatorArrivedChannel?</label>
+			<label kind="assignment" x="-739" y="-17">floorButtons[id].down = false,
+floorDisplay[id].display_floor = current_floor,
+floorDisplay[id].direction = 0</label>
+			<nail x="-425" y="-34"/>
+			<nail x="-790" y="-34"/>
+		</transition>
+		<transition id="id28">
+			<source ref="id25"/>
+			<target ref="id24"/>
+			<label kind="synchronisation" x="-714" y="-467">elevatorArrivedChannel?</label>
+			<label kind="assignment" x="-714" y="-442">floorButtons[id].up = false,
+floorDisplay[id].display_floor = current_floor,
+floorDisplay[id].direction = 0</label>
+			<nail x="-425" y="-442"/>
+			<nail x="-790" y="-442"/>
+		</transition>
+		<transition id="id29">
+			<source ref="id24"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-748" y="-178">floorButtons[id].down == true</label>
+			<label kind="synchronisation" x="-748" y="-161">floorCallChannel[id]!</label>
+			<label kind="assignment" x="-748" y="-144">floorCall.floor_called_from = id,
+floorCall.direction = -1,
+floorDisplay[id].display_floor = id,
+floorDisplay[id].direction = -1</label>
+		</transition>
+		<transition id="id30">
+			<source ref="id24"/>
+			<target ref="id25"/>
+			<label kind="guard" x="-748" y="-348">floorButtons[id].up == true</label>
+			<label kind="synchronisation" x="-748" y="-365">floorCallChannel[id]!</label>
+			<label kind="assignment" x="-748" y="-331">floorCall.floor_called_from = id,
+floorCall.direction = 1,
+floorDisplay[id].display_floor = id,
+floorDisplay[id].direction = 1</label>
+		</transition>
+	</template>
+	<template>
+		<name>ElevatorManager</name>
+		<declaration>clock travelTimer;</declaration>
+		<location id="id31" x="-484" y="-858">
+			<name x="-518" y="-901">inService</name>
+			<label kind="invariant" x="-416" y="-901">travelTimer &lt;= FLOOR_TRAVEL_TIME</label>
+		</location>
+		<location id="id32" x="-484" y="-629">
+			<name x="-518" y="-612">floorStop</name>
+		</location>
+		<location id="id33" x="-926" y="-858">
+			<name x="-968" y="-892">noOperations</name>
+		</location>
+		<location id="id34" x="-926" y="-629">
+			<name x="-969" y="-612">inMaintenance</name>
+		</location>
+		<branchpoint id="id35" x="-926" y="-858"/>
+		<init ref="id33"/>
+		<transition id="id36">
+			<source ref="id33"/>
+			<target ref="id32"/>
+			<label kind="guard" x="-918" y="-799">allDoorsClosed() &amp;&amp; inMaintenance == false</label>
+		</transition>
+		<transition id="id37">
+			<source ref="id31"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-612" y="-1147">!overloaded &amp;&amp;
+allDoorsClosed() &amp;&amp;
+!hasElevatorArrived(current_floor, target_floor) &amp;&amp;
+travelTimer &gt;= FLOOR_TRAVEL_TIME</label>
+			<label kind="assignment" x="-612" y="-1071">current_floor += target_direction,
+floorDisplay[current_floor].display_floor = current_floor,
+floorDisplay[current_floor].direction = target_direction,
+elevatorDisplay.display_floor = current_floor,
+elevatorDisplay.direction = target_direction,
+travelTimer = 0</label>
+			<nail x="-390" y="-944"/>
+			<nail x="-569" y="-944"/>
+		</transition>
+		<transition id="id38">
+			<source ref="id31"/>
+			<target ref="id32"/>
+			<label kind="guard" x="-629" y="-824">hasElevatorArrived(current_floor, target_floor)</label>
+			<label kind="synchronisation" x="-467" y="-782">elevatorArrivedChannel!</label>
+			<label kind="assignment" x="-578" y="-756">elevatorDisplay.direction = 0,
+floorDisplay[current_floor].direction = 0,
+currentDirection = 0</label>
+		</transition>
+		<transition id="id39">
+			<source ref="id34"/>
+			<target ref="id33"/>
+			<label kind="guard" x="-1113" y="-773">inMaintenance == false</label>
+		</transition>
+		<transition id="id40">
+			<source ref="id32"/>
+			<target ref="id34"/>
+			<label kind="guard" x="-782" y="-654">inMaintenance == true</label>
+		</transition>
+		<transition id="id41">
+			<source ref="id32"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-187" y="-782">allDoorsClosed()</label>
+			<label kind="synchronisation" x="-187" y="-765">serviceQueueProcessed?</label>
+			<label kind="assignment" x="-187" y="-748">travelTimer = 0</label>
+			<nail x="-195" y="-629"/>
+			<nail x="-195" y="-858"/>
+		</transition>
+		<transition id="id42">
+			<source ref="id33"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-807" y="-909">allDoorsClosed()</label>
+			<label kind="synchronisation" x="-816" y="-892">serviceQueueProcessed?</label>
+			<label kind="assignment" x="-807" y="-875">travelTimer = 0</label>
+		</transition>
+	</template>
+	<system>
+floor_panel_0 = FloorPanel(0);
+floor_panel_1 = FloorPanel(1);
+floor_panel_2 = FloorPanel(2);
+floor_panel_3 = FloorPanel(3);
+elevator_panel = ElevatorPanel();
+
+service_queue = ServiceQueue();
+elevator_manager = ElevatorManager();
+
+door_motor_controller = DoorMotorController();
+
+user = User();
+
+system user, floor_panel_0, floor_panel_1, floor_panel_2, floor_panel_3,
+       service_queue, elevator_panel, elevator_manager, door_motor_controller;
+</system>
+	<queries>
+		<query>
+			<formula>A[] not deadlock</formula>
+			<comment>D1: System never deadlocks</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:46:27 +0300">
+			</result>
+		</query>
+		<query>
+			<formula>A[] (elevator_manager.inService imply allDoorsClosed())</formula>
+			<comment>S1: Door cannot be open while elevator is moving</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:46:22 +0300">
+			</result>
+		</query>
+		<query>
+			<formula>A[] not (elevator_manager.inService and overloaded)</formula>
+			<comment>S2: Elevator never moves when overloaded</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:46:30 +0300">
+			</result>
+		</query>
+		<query>
+			<formula>A[] (current_floor &gt;= 0 and current_floor &lt; num_floors)</formula>
+			<comment>S3: Floor index always in valid range</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:46:32 +0300">
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; (current_floor == 0)</formula>
+			<comment>R2: Ground floor is reachable</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:46:39 +0300">
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; elevator_manager.noOperations</formula>
+			<comment>R4: Idle state is reachable</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:46:55 +0300">
+			</result>
+		</query>
+		<query>
+			<formula>elevator_manager.floorStop --&gt; elevator_manager.noOperations or elevator_manager.inService</formula>
+			<comment>L1: After stopping, elevator eventually continues or goes idle</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:46:59 +0300">
+			</result>
+		</query>
+		<query>
+			<formula>door_motor_controller.DoorOpen --&gt; door_motor_controller.Idle</formula>
+			<comment>L2: Door always eventually closes after opening</comment>
+			<result outcome="success" type="quality" timestamp="2026-04-05 18:47:01 +0300">
+			</result>
+		</query>
+	</queries>
+</nta>
