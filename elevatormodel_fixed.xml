@@ -111,7 +111,6 @@ chan requestServiceQueue;
 		<declaration>typedef struct {
     int floorNumber;
     Direction direction;
-    bool isElevatorCall;
 } Request;
 const int MAX_QUEUE = 10;
 Request queue[MAX_QUEUE];
@@ -121,7 +120,7 @@ void appendElevatorRequest(GotoFloor&amp; g) {
     if (queueSize &gt;= MAX_QUEUE ) {return;}
     queue[queueSize].floorNumber = g.selected_floor;
     queue[queueSize].direction = 0;
-    queue[queueSize].isElevatorCall = true;
+
     queueSize++;
 }
 
@@ -129,7 +128,6 @@ void appendFloorRequest(FloorCall&amp; f) {
     if (queueSize &gt;= MAX_QUEUE ) {return;}
     queue[queueSize].floorNumber = f.floor_called_from;
     queue[queueSize].direction = f.direction;
-    queue[queueSize].isElevatorCall = false;
     queueSize++;
 }
 
@@ -282,18 +280,15 @@ doorTimer = 0</label>
 			<source ref="id19"/>
 			<target ref="id20"/>
 			<label kind="synchronisation" x="-42" y="-93">doorCloseChannel[current_floor]!</label>
-			<label kind="assignment" x="-42" y="-76">elevatorButtons[gotoFloor.selected_floor] = false,
-elevatorDisplay.display_floor = current_floor,
-elevatorDisplay.direction = target_direction</label>
+			<label kind="assignment" x="-42" y="-76">elevatorButtons[gotoFloor.selected_floor] = false</label>
 		</transition>
 		<transition id="id23">
 			<source ref="id18"/>
 			<target ref="id19"/>
-			<label kind="select" x="-408" y="-34">i: f_id</label>
-			<label kind="guard" x="-408" y="-8">elevatorButtons[i] == true &amp;&amp; i != current_floor</label>
-			<label kind="synchronisation" x="-408" y="17">gotoFloorChannel!</label>
-			<label kind="assignment" x="-408" y="42">gotoFloor.selected_floor = i,
-elevatorDisplay.display_floor = current_floor</label>
+			<label kind="select" x="-450" y="-34">i: f_id</label>
+			<label kind="guard" x="-450" y="-8">elevatorButtons[i] == true</label>
+			<label kind="synchronisation" x="-450" y="17">gotoFloorChannel!</label>
+			<label kind="assignment" x="-450" y="42">gotoFloor.selected_floor = i</label>
 		</transition>
 	</template>
 	<template>
@@ -472,49 +467,47 @@ system user, FloorPanel,
 		<query>
 			<formula>A[] not deadlock</formula>
 			<comment>D1: System never deadlocks</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:50:53 +0300">
-			</result>
 		</query>
 		<query>
 			<formula>A[] (elevator_manager.inService imply allDoorsClosed())</formula>
 			<comment>S1: Door cannot be open while elevator is moving</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:50:57 +0300">
+			<result outcome="success" type="quality" timestamp="2026-04-06 13:02:11 +0300">
 			</result>
 		</query>
 		<query>
 			<formula>A[] not (elevator_manager.inService and overloaded)</formula>
 			<comment>S2: Elevator never moves when overloaded</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:50:59 +0300">
+			<result outcome="success" type="quality" timestamp="2026-04-06 13:02:14 +0300">
 			</result>
 		</query>
 		<query>
 			<formula>A[] (current_floor &gt;= 0 and current_floor &lt; num_floors)</formula>
 			<comment>S3: Floor index always in valid range</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:51:00 +0300">
+			<result outcome="success" type="quality" timestamp="2026-04-06 13:02:22 +0300">
 			</result>
 		</query>
 		<query>
 			<formula>E&lt;&gt; (current_floor == 0)</formula>
 			<comment>R2: Ground floor is reachable</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:51:02 +0300">
+			<result outcome="success" type="quality" timestamp="2026-04-06 13:02:20 +0300">
 			</result>
 		</query>
 		<query>
 			<formula>E&lt;&gt; elevator_manager.noOperations</formula>
 			<comment>R4: Idle state is reachable</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:51:06 +0300">
+			<result outcome="success" type="quality" timestamp="2026-04-06 13:02:18 +0300">
 			</result>
 		</query>
 		<query>
 			<formula>E&lt;&gt; elevator_manager.inService</formula>
 			<comment>moving state reachable</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:51:32 +0300">
+			<result outcome="success" type="quality" timestamp="2026-04-06 13:02:15 +0300">
 			</result>
 		</query>
 		<query>
 			<formula>E&lt;&gt; (current_floor == 3)</formula>
 			<comment>top floor reachable</comment>
-			<result outcome="success" type="quality" timestamp="2026-04-06 12:51:35 +0300">
+			<result outcome="success" type="quality" timestamp="2026-04-06 13:02:16 +0300">
 			</result>
 		</query>
 	</queries>
